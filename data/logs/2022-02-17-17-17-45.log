@@ -1,0 +1,17 @@
+2022-02-17 17:17:45
+loading vocab...
+dataManager initialized...
+mode:train
+loading data...
+validation set is not exist, built...
+training set size:308, validation set siez:35
+++++++++++++++++++++training start++++++++++++++++++++
+epoch: 1/20
+training batch:    10, loss:2.97105, accuracy:0.188
+start evaluate engines...
+time consumption: 0.88(min), accuracy:0.000
+time consumption: 0.88(min), accuracy:0.000
+time consumption: 0.88(min), accuracy:0.000
+early stopped, no process obtained with 3 epoch
+overall best acc is 0.0 at 0 epoch
+total training time consumption: 0.910(min)
