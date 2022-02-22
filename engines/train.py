@@ -38,6 +38,14 @@ def train(configs, dataManager, logger):
     valid_dist_dataset = strategy.experimental_distribute_dataset(valid_dataset)
 
     with strategy.scope():
+
+        if configs.model == "BERT":
+            model = Bert_model(bert_path=configs.bert_pretrain_path, num_classes=num_classes)
+        elif configs.model == "TextCNN":
+            model = TextCNN(configs=configs, num_classes=num_classes, vocab_size=vocab_size)
+        else:
+            model = TextCNN(configs=configs, num_classes=num_classes, vocab_size=vocab_size)
+
         if configs.optimizer == "Adagrad":
             optimizer = tf.keras.optimizers.Adagrad(learning_rate)
         elif configs.optimizer == "Adadelta":
@@ -49,22 +57,28 @@ def train(configs, dataManager, logger):
         else:
             optimizer = tf.keras.optimizers.Adam(learning_rate)
 
-        model = TextCNN(configs=configs, num_classes=num_classes, vocab_size=vocab_size)
-        # model = Bert_model(bert_path=, num_classes=num_classes)
         train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
         test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='test_accuracy')
         test_loss = tf.keras.metrics.Mean(name='test_loss')
+        train_loss = tf.keras.metrics.Mean(name='train_loss')
         checkpoints = tf.train.Checkpoint(model=model)
         checkpoints_manager = tf.train.CheckpointManager(checkpoint=checkpoints, directory=checkpoint_dir,
                                                          max_to_keep=max_to_keep, checkpoint_name=checkpoint_name)
 
     @tf.function
-    def train_step(X_train_batch, y_train_batch):
+    def train_step(inputs):
         with tf.GradientTape() as tape:
-            outputs = model.call(inputs=X_train_batch)
+            if configs.model == "BERT":
+                X_train_batch, y_train_batch, att_mask_train_batch, token_type_ids_train_batch = inputs
+                print(X_train_batch, y_train_batch, att_mask_train_batch, token_type_ids_train_batch)
+                outputs = model.call(input_ids=X_train_batch, input_mask=att_mask_train_batch, token_ids=token_type_ids_train_batch)
+            else:
+                X_train_batch, y_train_batch = inputs
+                outputs = model.call(inputs=X_train_batch)
             y_true = tf.one_hot(y_train_batch, depth=num_classes)
             losses = tf.keras.losses.categorical_crossentropy(y_true=y_true, y_pred=outputs, from_logits=False)
             loss = tf.reduce_mean(losses)
+            train_loss.update_state(losses)
 
         gradients = tape.gradient(loss, model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
@@ -72,8 +86,14 @@ def train(configs, dataManager, logger):
         return loss
 
     @tf.function
-    def test_step(X_val_batch, y_val_batch):
-        outputs = model.call(inputs=X_val_batch)
+    def test_step(inputs):
+        if configs.model == "BERT":
+            X_val_batch, y_val_batch, att_mask_val_batch, token_type_ids_val_batch = inputs
+            outputs = model.call(input_ids=X_val_batch, input_mask=att_mask_val_batch, token_ids=token_type_ids_val_batch)
+        else:
+            X_val_batch, y_val_batch = inputs
+            outputs = model.call(inputs=X_val_batch)
+
         y_true = tf.one_hot(y_val_batch, depth=num_classes)
         losses = tf.keras.losses.categorical_crossentropy(y_true=y_true, y_pred=outputs, from_logits=False)
         test_loss.update_state(losses)
@@ -81,13 +101,13 @@ def train(configs, dataManager, logger):
         return losses
 
     @tf.function
-    def distributed_train_step(X_train_batch, y_train_batch):
-        per_replica_losses = strategy.run(train_step, args=(X_train_batch, y_train_batch))
+    def distributed_train_step(inputs):
+        per_replica_losses = strategy.run(train_step, args=(inputs,))
         return strategy.reduce(tf.distribute.ReduceOp.SUM, per_replica_losses, axis=None)
 
     @tf.function
-    def distributed_test_step(X_val_batch, y_val_batch):
-        return strategy.run(test_step, args=(X_val_batch, y_val_batch))
+    def distributed_test_step(inputs):
+        return strategy.run(test_step, args=(inputs,))
 
     logger.info(('+' * 20) + 'training start' + ('+' * 20))
     for i in range(epoch):
@@ -98,22 +118,18 @@ def train(configs, dataManager, logger):
         num_val_batches = 0
 
         for X in iter(train_dist_dataset):
-            X_train_batch, y_train_batch = X
-            train_step_loss = distributed_train_step(X_train_batch, y_train_batch)
+            _ = distributed_train_step(X)
             num_train_batches += 1
-            total_loss += train_step_loss
 
             if num_train_batches % configs.print_per_batch == 0 and num_train_batches != 0:
                 logger.info(
-                    'training batch: %5d, loss:%.5f, acc:%.5f' % (num_train_batches, total_loss / configs.print_per_batch, train_accuracy.result()))
-                total_loss = 0
+                    'training batch: %5d, loss:%.5f, acc:%.5f' % (num_train_batches, train_loss.result(), train_accuracy.result()))
 
         # validation
         logger.info('start evaluate engines...')
 
         for X_val in iter(valid_dist_dataset):
-            X_val_batch, y_val_batch = X_val
-            _ = distributed_test_step(X_val_batch, y_val_batch)
+            _ = distributed_test_step(X_val)
             num_val_batches += 1
 
             if num_val_batches % configs.print_per_batch == 0 and num_val_batches != 0:
@@ -142,6 +158,9 @@ def train(configs, dataManager, logger):
                 logger.info('total training time consumption: %.3f(min)' % ((time.time() - very_start_time) / 60))
                 return
         train_accuracy.reset_state()
+        test_accuracy.reset_state()
+        test_loss.reset_state()
+        train_loss.reset_state()
 
     logger.info('overall best acc is {} at {} epoch'.format(best_acc, best_at_epoch))
     logger.info('total training time consumption: %.3f(min)' % ((time.time() - very_start_time) / 60))

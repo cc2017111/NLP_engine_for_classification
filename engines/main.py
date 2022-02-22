@@ -8,7 +8,7 @@ from engines.data import BertDataManager, DataManager
 from engines.train import train
 
 
-os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+# os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 # gpus = tf.config.experimental.list_physical_devices(device_type='GPU')
 # tf.config.experimental.set_memory_growth(gpus[0], True)
 # physical_devices = tf.config.experimental.list_physical_devices('GPU')
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     check_fold(configs)
     logger = get_logger(configs.log_dir)
     mode = configs.mode.lower()
-    if configs.use_bert:
+    if configs.model == "BERT":
         dataManager = BertDataManager(configs, logger)
     else:
         dataManager = DataManager(configs, logger)

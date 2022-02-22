@@ -102,9 +102,9 @@ class Configure:
         if the_item in config:
             self.optimizer = config[the_item]
 
-        the_item = 'use_bert'
+        the_item = 'model'
         if the_item in config:
-            self.use_bert = self.str2bool(config[the_item])
+            self.model = config[the_item]
 
         the_item = 'bert_pretrain_path'
         if the_item in config:

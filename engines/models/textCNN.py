@@ -41,6 +41,7 @@ class TextCNN(Model, ABC):
                                            kernel_regularizer=tf.keras.regularizers.l2(0.2),
                                            bias_regularizer=tf.keras.regularizers.l2(0.2), name='dense')
         self.flatten = tf.keras.layers.Flatten(data_format='channels_last', name='flatten')
+        self.softmax = tf.keras.layers.Softmax()
 
     @tf.function
     def call(self, inputs, training=None):
@@ -51,34 +52,24 @@ class TextCNN(Model, ABC):
             alpha = tf.nn.softmax(output, axis=1)
             inputs = alpha * inputs
 
-        # print("1", inputs.shape)
         inputs = tf.expand_dims(inputs, -1)
-        # print("2", inputs.shape)
         pooled_output = []
         con1 = self.conv1(inputs)
-        # print("3", con1.shape)
         pool1 = self.pool1(con1)
-        # print("4", pool1.shape)
         pooled_output.append(pool1)
 
         con2 = self.conv2(inputs)
-        # print("5", con2.shape)
         pool2 = self.pool2(con2)
-        # print("6", pool2.shape)
         pooled_output.append(pool2)
 
         con3 = self.conv3(inputs)
-        # print("7", con3.shape)
         pool3 = self.pool3(con3)
-        # print("8", pool3.shape)
         pooled_output.append(pool3)
 
         concat_outputs = tf.keras.layers.concatenate(pooled_output, axis=-1, name='concatenate')
-        # print("9", concat_outputs.shape)
         flatten_outputs = self.flatten(concat_outputs)
-        # print("10", flatten_outputs)
         drop_outputs = self.dropout(flatten_outputs, training)
-        # print("11", drop_outputs)
         outputs = self.dense(drop_outputs)
+        # softmax_outputs = self.softmax(outputs)
         # print("12", outputs)
         return outputs

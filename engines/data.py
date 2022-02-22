@@ -29,7 +29,7 @@ class BertDataManager:
         self.batch_size = configs.batch_size
         self.max_sequence_length = configs.max_sequence_length
         self.vocabs_dir = configs.vocabs_dir
-        self.label2id_file = configs.vocabs_dir + '/label2id'
+        self.label2id_file = str(base_path) + '/' + configs.vocabs_dir + '/label2id'
         self.label2id, self.id2label = self.load_labels()
 
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-chinese')
@@ -94,6 +94,7 @@ class BertDataManager:
 
     def get_dataset(self):
         X_train, y_train, att_mask_train, token_type_ids_train, X_val, y_val, att_mask_val, token_type_ids_val = self.get_training_set(ratio=0.8)
+
         train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train, att_mask_train, token_type_ids_train))
         valid_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val, att_mask_val, token_type_ids_val))
         return train_dataset, valid_dataset
@@ -114,11 +115,11 @@ class BertDataManager:
 
                 tmp_x += [0 for _ in range(self.max_sequence_length - len(tmp_x))]
                 tmp_att_mask += [0 for _ in range(self.max_sequence_length - len(tmp_att_mask))]
-                token_type_ids = self.max_sequence_length * [0]
+                token_type_ids_tmp = self.max_sequence_length * [0]
                 X.append(tmp_x)
                 y.append(tmp_y)
                 att_mask.append(tmp_att_mask)
-                token_type_ids.append(token_type_ids)
+                token_type_ids.append(token_type_ids_tmp)
             else:
                 tmp_x = self.tokenizer.encode(sentence)
                 tmp_x = tmp_x[:self.max_sequence_length - 2]
@@ -130,7 +131,7 @@ class BertDataManager:
                 att_mask.append(att_mask_tmp)
                 token_type_ids.append(token_type_ids_tmp)
 
-        return np.array(X), np.array(y), np.array(att_mask), np.array(token_type_ids)
+        return np.array(X, dtype=np.int32), np.array(y, dtype=np.int32), np.array(att_mask, dtype=np.int32), np.array(token_type_ids, dtype=np.int32)
 
     def next_batch(self, x, y, att_mask, token_type_ids, start_index):
         last_index = start_index + self.batch_size
