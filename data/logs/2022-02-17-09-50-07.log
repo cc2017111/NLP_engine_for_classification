@@ -1,7 +1,0 @@
-2022-02-17 09:50:07
-mode:train
-loading data...
-validation set does not exist, built...
-train set size: 17, validation set size: 2
-++++++++++++++++++++training start++++++++++++++++++++
-epoch: 1/20

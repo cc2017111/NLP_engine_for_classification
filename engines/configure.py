@@ -31,6 +31,39 @@ class Configure:
         if the_item in config:
             self.train_file = config[the_item]
 
+        the_item = 'token_level'
+        if the_item in config:
+            self.token_level = config[the_item]
+
+        # word2vec config
+        the_item = 'stop_word_file'
+        if the_item in config:
+            self.stop_word_file = self.str2none(config[the_item])
+
+        the_item = 'w2v_train_data'
+        if the_item in config:
+            self.w2v_train_data = config[the_item]
+
+        the_item = 'w2v_model_dir'
+        if the_item in config:
+            self.w2v_model_dir = config[the_item]
+
+        the_item = 'w2v_model_name'
+        if the_item in config:
+            self.w2v_model_name = config[the_item]
+
+        the_item = 'w2v_model_dim'
+        if the_item in config:
+            self.w2v_model_dim = int(config[the_item])
+
+        the_item = 'w2v_min_count'
+        if the_item in config:
+            self.w2v_min_count = int(config[the_item])
+
+        the_item = 'sg'
+        if the_item in config:
+            self.sg = config[the_item]
+
         the_item = 'batch_size'
         if the_item in config:
             self.batch_size = int(config[the_item])
@@ -72,6 +105,10 @@ class Configure:
         the_item = 'use_bert'
         if the_item in config:
             self.use_bert = self.str2bool(config[the_item])
+
+        the_item = 'bert_pretrain_path'
+        if the_item in config:
+            self.bert_pretrain_path = config[the_item]
 
         the_item = 'print_per_batch'
         if the_item in config:

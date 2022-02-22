@@ -1,23 +1,27 @@
 import os
 import random
-
 import jieba
 import numpy as np
+import tensorflow as tf
+
 from tqdm import tqdm
 from pathlib import Path
 from transformers import BertTokenizer
+from collections import Counter
 from engines.utils.io_functions import read_csv
+from engines.utils.w2v_utils import Word2VecUtils
+from engines.utils.clean_data import filter_word, filter_char
 base_path = Path(__file__).resolve().parent.parent
 
 
 class BertDataManager:
     def __init__(self, configs, logger):
-        self.configs =  configs
+        self.configs = configs
         self.logger = logger
 
         self.train_file = str(base_path) + '/' + configs.datasets_fold + '/' + configs.train_file
         if configs.dev_file is not None:
-            self.dev_file = configs.datasets_fold + '/' + configs.dev_file
+            self.dev_file = str(base_path) + '/' + configs.datasets_fold + '/' + configs.dev_file
         else:
             self.dev_file = None
 
@@ -88,6 +92,12 @@ class BertDataManager:
         X_val, y_val, att_mask_val, token_type_ids_val = self.prepare(df_val)
         return X_val, y_val, att_mask_val, token_type_ids_val
 
+    def get_dataset(self):
+        X_train, y_train, att_mask_train, token_type_ids_train, X_val, y_val, att_mask_val, token_type_ids_val = self.get_training_set(ratio=0.8)
+        train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train, att_mask_train, token_type_ids_train))
+        valid_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val, att_mask_val, token_type_ids_val))
+        return train_dataset, valid_dataset
+
     def prepare(self, df):
         self.logger.info("loading data...")
         X= []
@@ -152,10 +162,10 @@ class DataManager:
         self.UNKNOWN = '[UNK]'
         self.PADDING = '[PAD]'
 
-        self.train_file = configs.datasets_fold + '/' + configs.train_file
+        self.train_file = str(base_path) + '/' + configs.datasets_fold + '/' + configs.train_file
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-chinese')
         if configs.dev_file is not None:
-            self.dev_file = configs.datasets_fold + '/' + configs.dev_file
+            self.dev_file = str(base_path) + '/' + configs.datasets_fold + '/' + configs.dev_file
         else:
             self.dev_file = None
 
@@ -163,13 +173,15 @@ class DataManager:
         self.max_sequence_length = configs.max_sequence_length
         self.embedding_dim = configs.embedding_dim
         self.vocabs_dir = configs.vocabs_dir
-        self.token2id_file = configs.vocabs_dir + '/token2id'
-        self.label2id_file = configs.vocabs_dir + '/label2id'
+        self.token_level = configs.token_level
+        self.token2id_file = str(base_path) + '/' + configs.vocabs_dir + '/token2id'
+        self.label2id_file = str(base_path) + '/' + configs.vocabs_dir + '/label2id'
 
         self.token2id, self.id2token, self.label2id, self.id2label = self.load_vocab()
         self.max_sequence_length = configs.max_sequence_length
         self.max_token_num = len(self.tokenizer.get_vocab())
         self.max_label_num = len(self.label2id)
+        self.word2vec_utils = Word2VecUtils(self.configs, self.logger)
         self.logger.info('dataManager initialized...')
 
     def load_vocab(self):
@@ -182,7 +194,7 @@ class DataManager:
         with open(self.token2id_file, mode='r', encoding='utf-8') as infile:
             for row in infile:
                 row = row.strip()
-                token, token_id = row.split('¤')[0], int(row.split('¤')[1])
+                token, token_id = row.split('\t')[0], int(row.split('\t')[1])
                 token2id[token] = token_id
                 id2token[token_id] = token
 
@@ -198,11 +210,21 @@ class DataManager:
 
     def build_vocab(self):
         df_train = read_csv(self.train_file, names=['id', 'date', 'label', 'sentence', 'keyword'], delimiter='_!_')
-        tokens_dep = list(set(df_train['sentence'][df_train['sentence'].notnull()]))
+        sentences = list(set(df_train['sentence'][df_train['sentence'].notnull()]))
         tokens = []
-        for item in tokens_dep:
-            for it in item:
-                tokens += it
+        if self.token_level == 'word':
+            for sentence in tqdm(sentences):
+                words = self.word2vec_utils.processing_sentence(sentence, self.word2vec_utils.get_stop_word())
+                tokens.extend(words)
+
+            count_dict = Counter(tokens)
+            tokens = [k for k, v in count_dict.items() if v > 1 and filter_word(k)]
+        else:
+            for sentence in tqdm(sentences):
+                chars = list(sentence)
+                tokens.extend(chars)
+            count_dict = Counter(tokens)
+            tokens = [k for k, v in count_dict.items() if k != ' ' and filter_char(k)]
         tokens = set(tokens)
         labels = list(set(df_train['label'][df_train['label'].notnull()]))
         token2id = dict(zip(tokens, range(1, len(tokens) + 1)))
@@ -218,7 +240,7 @@ class DataManager:
 
         with open(self.token2id_file, mode='w', encoding='utf-8') as outfile:
             for idx in id2token:
-                outfile.write(id2token[idx] + '¤' + str(idx) + '\n')
+                outfile.write(id2token[idx] + '\t' + str(idx) + '\n')
 
         with open(self.label2id_file, mode='w', encoding='utf-8') as outfile:
             for idx in id2label:
@@ -254,20 +276,24 @@ class DataManager:
         for index, record in tqdm(df.iterrows()):
             sentence = record.sentence
             label = record.label
-            tmp_x = self.tokenizer.encode(sentence)
-            tmp_y = self.label2id[label]
-            if len(sentence) <= self.max_sequence_length:
-                x.append(tmp_x)
+            if self.token_level == 'word':
+                sentence = self.word2vec_utils.processing_sentence(sentence, self.word2vec_utils.get_stop_word())
             else:
-                x.append(tmp_x[:self.max_sequence_length])
-            y.append(tmp_y)
+                sentence = list(record.sentence)
+
+            tokens = []
+            for word in sentence:
+                if word in self.token2id:
+                    tokens.append(self.token2id[word])
+                else:
+                    tokens.append(self.token2id[self.UNKNOWN])
+            x.append(tokens)
+            y.append(self.label2id[label])
 
         if is_padding:
-            x = np.array(self.padding(x))
-        else:
-            x = np.array(x)
-        y = np.array(y)
-        return x, y
+            x = self.padding(x)
+
+        return np.array(x), np.array(y)
 
     def get_training_set(self, ratio=0.9):
         df_train = read_csv(self.train_file, names=['id', 'date', 'label', 'sentence', 'keyword'], delimiter='_!_')
@@ -283,8 +309,14 @@ class DataManager:
             x_val = x[int(num_samples * ratio):]
             y_val = y[int(num_samples * ratio):]
             self.logger.info('validation set is not exist, built...')
-        self.logger.info('training set size:{}, validation set siez:{}'. format(len(x_train), len(x_val)))
+        self.logger.info('training set size:{}, validation set size:{}'. format(len(x_train), len(x_val)))
         return x_train, y_train, x_val, y_val
+
+    def get_dataset(self):
+        x_train, y_train, x_val, y_val = self.get_training_set(ratio=0.8)
+        train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
+        valid_dataset = tf.data.Dataset.from_tensor_slices((x_val, y_val))
+        return train_dataset, valid_dataset
 
     def get_valid_set(self):
         df_val = read_csv(self.train_file, names=['id', 'date', 'label', 'sentence', 'keyword'], delimiter='_!_')
