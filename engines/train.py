@@ -7,6 +7,7 @@ from tqdm import tqdm
 from engines.models.Bert import Bert_model
 from engines.models.textCNN import TextCNN
 from engines.models.TextRNN import TextRNN
+from engines.models.Transformer import Transformer
 from engines.utils.metrics import metrics
 
 
@@ -47,7 +48,7 @@ def train(configs, dataManager, logger):
         elif configs.model == "TextRNN":
             model = TextRNN(configs=configs, num_classes=num_classes, vocab_size=vocab_size)
         else:
-            model = TextCNN(configs=configs, num_classes=num_classes, vocab_size=vocab_size)
+            model = Transformer(configs=configs, num_classes=num_classes, vocab_size=vocab_size)
 
         if configs.optimizer == "Adagrad":
             optimizer = tf.keras.optimizers.Adagrad(learning_rate)
