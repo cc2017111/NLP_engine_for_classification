@@ -151,6 +151,11 @@ class Configure:
         if the_item in config:
             self.embedding_method = config[the_item]
 
+        #TextRNN model configure
+        the_item = 'hidden_dim'
+        if the_item in config:
+            self.hidden_dim = int(config[the_item])
+
     @staticmethod
     def config_file_to_dict(input_file):
         config = {}

@@ -6,6 +6,7 @@ import tensorflow as tf
 from tqdm import tqdm
 from engines.models.Bert import Bert_model
 from engines.models.textCNN import TextCNN
+from engines.models.TextRNN import TextRNN
 from engines.utils.metrics import metrics
 
 
@@ -43,6 +44,8 @@ def train(configs, dataManager, logger):
             model = Bert_model(bert_path=configs.bert_pretrain_path, num_classes=num_classes)
         elif configs.model == "TextCNN":
             model = TextCNN(configs=configs, num_classes=num_classes, vocab_size=vocab_size)
+        elif configs.model == "TextRNN":
+            model = TextRNN(configs=configs, num_classes=num_classes, vocab_size=vocab_size)
         else:
             model = TextCNN(configs=configs, num_classes=num_classes, vocab_size=vocab_size)
 
