@@ -9,6 +9,7 @@ from engines.models.textCNN import TextCNN
 from engines.models.TextRNN import TextRNN
 from engines.models.TextRCNN import TextRCNN
 from engines.models.Transformer import Transformer
+from engines.models.FastText import FastText
 from engines.utils.metrics import metrics
 
 
@@ -50,6 +51,8 @@ def train(configs, dataManager, logger):
             model = TextRNN(configs=configs, num_classes=num_classes, vocab_size=vocab_size)
         elif configs.model == "TextRCNN":
             model = TextRCNN(configs=configs, num_classes=num_classes, vocab_size=vocab_size)
+        elif configs.model == "FastText":
+            model = FastText(configs=configs, num_classes=num_classes, vocab_size=vocab_size)
         else:
             model = Transformer(configs=configs, num_classes=num_classes, vocab_size=vocab_size)
 
