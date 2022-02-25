@@ -5,4 +5,4 @@
 
 2022.2.23 添加BERT，TextRNN，Transformer。
 
-2022.2.25 添加TextRCNN。
+2022.2.25 添加TextRCNN，Fastext。
