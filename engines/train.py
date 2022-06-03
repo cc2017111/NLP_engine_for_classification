@@ -10,6 +10,7 @@ from engines.models.TextRNN import TextRNN
 from engines.models.TextRCNN import TextRCNN
 from engines.models.Transformer import Transformer
 from engines.models.FastText import FastText
+from engines.utils.focal_loss import focal_loss
 from engines.utils.metrics import metrics
 
 
@@ -80,13 +81,14 @@ def train(configs, dataManager, logger):
         with tf.GradientTape() as tape:
             if configs.model == "BERT":
                 X_train_batch, y_train_batch, att_mask_train_batch, token_type_ids_train_batch = inputs
-                print(X_train_batch, y_train_batch, att_mask_train_batch, token_type_ids_train_batch)
+                # print(X_train_batch, y_train_batch, att_mask_train_batch, token_type_ids_train_batch)
                 outputs = model.call(input_ids=X_train_batch, input_mask=att_mask_train_batch, token_ids=token_type_ids_train_batch)
             else:
                 X_train_batch, y_train_batch = inputs
                 outputs = model.call(inputs=X_train_batch)
             y_true = tf.one_hot(y_train_batch, depth=num_classes)
-            losses = tf.keras.losses.categorical_crossentropy(y_true=y_true, y_pred=outputs, from_logits=False)
+            losses = focal_loss(y_true=y_true, y_probs=outputs, alpha=0.5, gamma=1.5, epsilon=1e-6)
+            # losses = tf.keras.losses.categorical_crossentropy(y_true=y_true, y_pred=outputs, from_logits=False)
             loss = tf.reduce_mean(losses)
             train_loss.update_state(losses)
 
@@ -105,7 +107,8 @@ def train(configs, dataManager, logger):
             outputs = model.call(inputs=X_val_batch)
 
         y_true = tf.one_hot(y_val_batch, depth=num_classes)
-        losses = tf.keras.losses.categorical_crossentropy(y_true=y_true, y_pred=outputs, from_logits=False)
+        losses = focal_loss(y_true=y_true, y_probs=outputs, alpha=0.5, gamma=1.5, epsilon=1e-6)
+        # losses = tf.keras.losses.categorical_crossentropy(y_true=y_true, y_pred=outputs, from_logits=False)
         test_loss.update_state(losses)
         test_accuracy.update_state(y_val_batch, outputs)
         return losses

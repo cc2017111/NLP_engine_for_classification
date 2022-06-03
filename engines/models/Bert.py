@@ -4,11 +4,13 @@ from transformers import BertConfig, TFBertForSequenceClassification
 
 
 class Bert_model(Model):
-    def __init__(self, bert_path, num_classes):
+    def __init__(self, configs, bert_path, num_classes):
         super(Bert_model, self).__init__()
         self.config = BertConfig.from_pretrained(bert_path)
+        self.dropout_rate =
         self.bert_layers = TFBertForSequenceClassification.from_pretrained(bert_path, num_labels=num_classes)
         self.bert_layers.trainable = True
+        self.dropout = tf.keras.layers.Dropout(self.dropout_rate)
         self.softmax = tf.keras.layers.Softmax()
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None, 512], dtype=tf.int32, name='input_ids'),

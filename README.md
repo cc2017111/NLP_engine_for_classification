@@ -6,3 +6,5 @@
 2022.2.23 添加BERT，TextRNN，Transformer。
 
 2022.2.25 添加TextRCNN，Fastext。
+
+2022.6.2 添加focal loss，添加专利IPC分类处理代码。

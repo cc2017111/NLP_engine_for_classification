@@ -40,8 +40,12 @@ class MultiHeadAttention(tf.keras.layers.Layer):
 
     def scale_dot_product_attention(self, query, key, value, mask):
         matmul_qk = tf.matmul(query, key, transpose_b=True)
-        dk = self.head_num ** -0.5
+        print("matmul_qk:", matmul_qk)
+        dk = self.head_num ** 0.5
+        print(self.head_num)
+        print(dk)
         scaled_attention = matmul_qk / tf.math.sqrt(dk)
+        print(scaled_attention)
 
         if mask is not None:
             scaled_attention += (mask * -1e9)
@@ -57,8 +61,10 @@ class MultiHeadAttention(tf.keras.layers.Layer):
 
     @tf.function
     def call(self, inputs, mask=None):
+        print("inputs:", inputs)
         batch_size = tf.shape(inputs)[0]
         query = self.W_Q(inputs)
+        print("query:", query)
         key = self.W_K(inputs)
         value = self.W_V(inputs)
 

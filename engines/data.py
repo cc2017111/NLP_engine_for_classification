@@ -53,8 +53,9 @@ class BertDataManager:
         return label2id, id2label
 
     def build_labels(self):
-        df_train = read_csv(self.train_file, names=['id', 'date', 'label', 'sentence', 'keyword'], delimiter='_!_')
+        df_train = read_csv(self.train_file, names=['sentence', 'label'], delimiter=',')
         labels = list(set(df_train['label'][df_train['label'].notnull()]))
+        print(labels)
         id2label = dict(zip(range(0, len(labels)), labels))
         label2id = dict(zip(labels, range(0, len(labels))))
         with open(self.label2id_file, mode='w', encoding='utf-8') as outfile:
@@ -63,8 +64,8 @@ class BertDataManager:
 
         return label2id, id2label
 
-    def get_training_set(self, ratio=0.9):
-        df_train = read_csv(self.train_file, names=['id', 'date', 'label', 'sentence', 'keyword'], delimiter='_!_')
+    def get_training_set(self, ratio=0.8):
+        df_train = read_csv(self.train_file, names=['sentence', 'label'], delimiter=',')
         X, y, att_mask, token_type_ids = self.prepare(df_train)
 
         num_samples = len(X)
@@ -88,7 +89,7 @@ class BertDataManager:
         return X_train, y_train, att_mask_train, token_type_ids_train, X_val, y_val, att_mask_val, token_type_ids_val
 
     def get_valid_set(self):
-        df_val =read_csv(self.dev_file, names=['id', 'date', 'label', 'sentence', 'keyword'], delimiter='_!_')
+        df_val = read_csv(self.dev_file, names=['sentence', 'label'], delimiter=',')
         X_val, y_val, att_mask_val, token_type_ids_val = self.prepare(df_val)
         return X_val, y_val, att_mask_val, token_type_ids_val
 
@@ -106,8 +107,9 @@ class BertDataManager:
         att_mask = []
         token_type_ids = []
         for index, record in tqdm(df.iterrows()):
-            sentence = record.sentence
+            sentence = record.sentence.replace(' ', '')
             label = record.label
+            # print(label)
             if len(sentence) < self.max_sequence_length - 2:
                 tmp_x = self.tokenizer.encode(sentence)
                 tmp_att_mask = [1] * len(tmp_x)
@@ -122,7 +124,12 @@ class BertDataManager:
                 token_type_ids.append(token_type_ids_tmp)
             else:
                 tmp_x = self.tokenizer.encode(sentence)
-                tmp_x = tmp_x[:self.max_sequence_length - 2]
+                tmp_x = tmp_x[:self.max_sequence_length]
+                if len(tmp_x) != 512:
+                    print(len(tmp_x))
+                    print(index)
+                    print(record.sentence)
+                assert len(tmp_x) == 512
                 tmp_y = self.label2id[label]
                 att_mask_tmp = [1] * self.max_sequence_length
                 token_type_ids_tmp = [0] * self.max_sequence_length
@@ -210,7 +217,7 @@ class DataManager:
         return token2id, id2token, label2id, id2label
 
     def build_vocab(self):
-        df_train = read_csv(self.train_file, names=['id', 'date', 'label', 'sentence', 'keyword'], delimiter='_!_')
+        df_train = read_csv(self.train_file, names=['sentence', 'label'], delimiter=',')
         sentences = list(set(df_train['sentence'][df_train['sentence'].notnull()]))
         tokens = []
         if self.token_level == 'word':
@@ -275,13 +282,17 @@ class DataManager:
         x = []
         y = []
         for index, record in tqdm(df.iterrows()):
-            sentence = record.sentence
-            label = record.label
+            sentence = record.sentence.replace(' ', '')
+            label = record.label[0]
             if self.token_level == 'word':
                 sentence = self.word2vec_utils.processing_sentence(sentence, self.word2vec_utils.get_stop_word())
             else:
                 sentence = list(record.sentence)
-
+                if len(sentence) > self.max_sequence_length:
+                    sentence = sentence[:self.max_sequence_length]
+            # if len(sentence) != self.max_sequence_length:
+            #     print(len(sentence))
+            # assert len(sentence) == self.max_sequence_length
             tokens = []
             for word in sentence:
                 if word in self.token2id:
@@ -297,7 +308,7 @@ class DataManager:
         return np.array(x), np.array(y)
 
     def get_training_set(self, ratio=0.9):
-        df_train = read_csv(self.train_file, names=['id', 'date', 'label', 'sentence', 'keyword'], delimiter='_!_')
+        df_train = read_csv(self.train_file, names=['sentence', 'label'], delimiter=',')
         x, y = self.prepare(df_train)
         num_samples = len(x)
         if self.dev_file is not None:
@@ -315,12 +326,13 @@ class DataManager:
 
     def get_dataset(self):
         x_train, y_train, x_val, y_val = self.get_training_set(ratio=0.8)
+        print(x_train)
         train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
         valid_dataset = tf.data.Dataset.from_tensor_slices((x_val, y_val))
         return train_dataset, valid_dataset
 
     def get_valid_set(self):
-        df_val = read_csv(self.train_file, names=['id', 'date', 'label', 'sentence', 'keyword'], delimiter='_!_')
+        df_val = read_csv(self.dev_file, names=['sentence', 'label'], delimiter=',')
         x_val, y_val = self.prepare(df_val)
         return x_val, y_val
 

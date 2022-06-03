@@ -52,7 +52,7 @@ def check_fold(configures):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='TextCNN')
+    parser = argparse.ArgumentParser(description='BERT')
     parser.add_argument('--config_file', default='system.config')
     args = parser.parse_args()
     configs = Configure(config_file=os.path.join(base_path, args.config_file))

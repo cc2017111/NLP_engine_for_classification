@@ -45,12 +45,18 @@ class TextCNN(Model, ABC):
 
     @tf.function
     def call(self, inputs, training=None):
+        print("inputs1", inputs)
         inputs = self.embedding_layer(inputs)
+        print("inputs2", inputs)
         if self.use_attention:
             output = self.attention_W(inputs)
+            # print("output1", output)
             output = tf.matmul(output, self.attention_v, transpose_b=True)
+            # print("output2", output)
             alpha = tf.nn.softmax(output, axis=1)
+            # print("alpha", alpha)
             inputs = alpha * inputs
+            # print("result", inputs)
 
         inputs = tf.expand_dims(inputs, -1)
         pooled_output = []
