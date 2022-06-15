@@ -8,9 +8,9 @@ from tqdm import tqdm
 from pathlib import Path
 from transformers import BertTokenizer
 from collections import Counter
-from engines.utils.io_functions import read_csv
-from engines.utils.w2v_utils import Word2VecUtils
-from engines.utils.clean_data import filter_word, filter_char
+from utils.io_functions import read_csv
+from utils.w2v_utils import Word2VecUtils
+from utils.clean_data import filter_word, filter_char
 base_path = Path(__file__).resolve().parent.parent
 
 
@@ -31,6 +31,7 @@ class BertDataManager:
         self.vocabs_dir = configs.vocabs_dir
         self.label2id_file = str(base_path) + '/' + configs.vocabs_dir + '/label2id'
         self.label2id, self.id2label = self.load_labels()
+        self.tfrecords_file_path = str(base_path) + '/' + configs.tfrecords_file_path
 
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-chinese')
         self.max_token_num = len(self.tokenizer.get_vocab())
@@ -53,8 +54,11 @@ class BertDataManager:
         return label2id, id2label
 
     def build_labels(self):
-        df_train = read_csv(self.train_file, names=['id', 'date', 'label', 'sentence', 'keyword'], delimiter='_!_')
+        df_train = read_csv(self.train_file, names=['sentence', 'label'], delimiter=',')
         labels = list(set(df_train['label'][df_train['label'].notnull()]))
+        for i in range(len(labels)):
+            labels[i] = labels[i]
+        labels = list(set(labels))
         id2label = dict(zip(range(0, len(labels)), labels))
         label2id = dict(zip(labels, range(0, len(labels))))
         with open(self.label2id_file, mode='w', encoding='utf-8') as outfile:
@@ -63,8 +67,8 @@ class BertDataManager:
 
         return label2id, id2label
 
-    def get_training_set(self, ratio=0.9):
-        df_train = read_csv(self.train_file, names=['id', 'date', 'label', 'sentence', 'keyword'], delimiter='_!_')
+    def get_training_set(self, ratio=0.8):
+        df_train = read_csv(self.train_file, names=['sentence', 'label'], delimiter=',')
         X, y, att_mask, token_type_ids = self.prepare(df_train)
 
         num_samples = len(X)
@@ -87,17 +91,87 @@ class BertDataManager:
         self.logger.info("train set size: {}, validation set size: {}".format(len(X_train), len(X_val)))
         return X_train, y_train, att_mask_train, token_type_ids_train, X_val, y_val, att_mask_val, token_type_ids_val
 
+    def save_tfrecords(self, dataframe, desfile):
+        with tf.io.TFRecordWriter(os.path.join(self.tfrecords_file_path, desfile)) as writer:
+            self.logger.info("saving tfrecords data...")
+            for index, record in tqdm(dataframe.iterrows()):
+                sentence = record.sentence.replace(' ', '')
+                label = record.label
+                if len(sentence) < self.max_sequence_length - 2:
+                    tmp_x = self.tokenizer.encode(sentence)
+                    tmp_att_mask = [1] * len(tmp_x)
+                    tmp_y = self.label2id[label]
+                    tmp_x += [0 for _ in range(self.max_sequence_length - len(tmp_x))]
+                    tmp_att_mask += [0 for _ in range(self.max_sequence_length - len(tmp_att_mask))]
+                    tmp_token_type_ids = self.max_sequence_length * [0]
+                else:
+                    tmp_x = self.tokenizer.encode(sentence)
+                    tmp_x = tmp_x[:self.max_sequence_length]
+                    if len(tmp_x) != 512:
+                        print(len(tmp_x))
+                        print(index)
+                        print(record.sentence)
+                    assert len(tmp_x) == 512
+                    tmp_y = self.label2id[label]
+                    tmp_att_mask = [1] * self.max_sequence_length
+                    tmp_token_type_ids = [0] * self.max_sequence_length
+                features = tf.train.Features(feature={
+                    "X": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=tmp_x)),
+                    "y": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=[int(tmp_y)])),
+                    "att_mask": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=tmp_att_mask)),
+                    "token_type_ids": tf.train.Feature(
+                        int64_list=tf.train.Int64List(value=tmp_token_type_ids)),
+                })
+                example = tf.train.Example(features=features)
+                serialized = example.SerializeToString()
+                writer.write(serialized)
+
+    def get_labels(self):
+        df_train = read_csv(self.train_file, names=['sentence', 'label'], delimiter=',')
+        y = []
+        for index, record in tqdm(df_train.iterrows()):
+            label = record.label
+            tmp_y = self.label2id[label]
+            y.append(tmp_y)
+        return np.array(y, dtype=np.int32)
+
     def get_valid_set(self):
-        df_val =read_csv(self.dev_file, names=['id', 'date', 'label', 'sentence', 'keyword'], delimiter='_!_')
+        df_val = read_csv(self.dev_file, names=['sentence', 'label'], delimiter=',')
         X_val, y_val, att_mask_val, token_type_ids_val = self.prepare(df_val)
         return X_val, y_val, att_mask_val, token_type_ids_val
 
-    def get_dataset(self):
-        X_train, y_train, att_mask_train, token_type_ids_train, X_val, y_val, att_mask_val, token_type_ids_val = self.get_training_set(ratio=0.8)
+    def get_training_dataset(self):
+        # X_train, y_train, att_mask_train, token_type_ids_train, X_val, y_val, att_mask_val, token_type_ids_val = self.get_training_set(ratio=0.8)
+        #
+        # train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train, att_mask_train, token_type_ids_train))
+        # valid_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val, att_mask_val, token_type_ids_val))
+        # return train_dataset, valid_dataset
+        if not os.path.exists(os.path.join(self.tfrecords_file_path, "train.tfrecords")):
+            df_train = read_csv(self.train_file, names=['sentence', 'label'], delimiter=',')
+            self.save_tfrecords(df_train, "train.tfrecords")
+        if not os.path.exists(os.path.join(self.tfrecords_file_path, "test.tfrecords")):
+            df_test = read_csv(self.dev_file, names=['sentence', 'label'], delimiter=',')
+            self.save_tfrecords(df_test, "test.tfrecords")
+        # ex = next(tf.compat.v1.python_io.tf_record_iterator(os.path.join(self.tfrecords_file_path, "train.tfrecords")))
+        # print(tf.train.Example.FromString(ex))
+        train_dataset = self.load_dataset("train.tfrecords")
+        test_dataset = self.load_dataset("test.tfrecords")
+        return train_dataset, test_dataset
 
-        train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train, att_mask_train, token_type_ids_train))
-        valid_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val, att_mask_val, token_type_ids_val))
-        return train_dataset, valid_dataset
+    def get_testing_dataset(self):
+        if not os.path.exists(os.path.join(self.tfrecords_file_path, "test.tfrecords")):
+            df_test = read_csv(self.dev_file, names=['sentence', 'label'], delimiter=',')
+            self.save_tfrecords(df_test, "test.tfrecords")
+        # ex = next(tf.compat.v1.python_io.tf_record_iterator(os.path.join(self.tfrecords_file_path, "train.tfrecords")))
+        # print(tf.train.Example.FromString(ex))
+        test_dataset = self.load_dataset("test.tfrecords")
+        return test_dataset
+        # X_val, y_val, att_mask_val, token_type_ids_val = self.get_valid_set()
+        # valid_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val, att_mask_val, token_type_ids_val))
+        # return valid_dataset
 
     def prepare(self, df):
         self.logger.info("loading data...")
@@ -106,8 +180,9 @@ class BertDataManager:
         att_mask = []
         token_type_ids = []
         for index, record in tqdm(df.iterrows()):
-            sentence = record.sentence
+            sentence = record.sentence.replace(' ', '')
             label = record.label
+            # print(label)
             if len(sentence) < self.max_sequence_length - 2:
                 tmp_x = self.tokenizer.encode(sentence)
                 tmp_att_mask = [1] * len(tmp_x)
@@ -115,21 +190,26 @@ class BertDataManager:
 
                 tmp_x += [0 for _ in range(self.max_sequence_length - len(tmp_x))]
                 tmp_att_mask += [0 for _ in range(self.max_sequence_length - len(tmp_att_mask))]
-                token_type_ids_tmp = self.max_sequence_length * [0]
+                tmp_token_type_ids = self.max_sequence_length * [0]
                 X.append(tmp_x)
                 y.append(tmp_y)
                 att_mask.append(tmp_att_mask)
-                token_type_ids.append(token_type_ids_tmp)
+                token_type_ids.append(tmp_token_type_ids)
             else:
                 tmp_x = self.tokenizer.encode(sentence)
-                tmp_x = tmp_x[:self.max_sequence_length - 2]
+                tmp_x = tmp_x[:self.max_sequence_length]
+                if len(tmp_x) != 512:
+                    print(len(tmp_x))
+                    print(index)
+                    print(record.sentence)
+                assert len(tmp_x) == 512
                 tmp_y = self.label2id[label]
-                att_mask_tmp = [1] * self.max_sequence_length
-                token_type_ids_tmp = [0] * self.max_sequence_length
+                tmp_att_mask = [1] * self.max_sequence_length
+                tmp_token_type_ids = [0] * self.max_sequence_length
                 X.append(tmp_x)
                 y.append(tmp_y)
-                att_mask.append(att_mask_tmp)
-                token_type_ids.append(token_type_ids_tmp)
+                att_mask.append(tmp_att_mask)
+                token_type_ids.append(tmp_token_type_ids)
 
         return np.array(X, dtype=np.int32), np.array(y, dtype=np.int32), np.array(att_mask, dtype=np.int32), np.array(token_type_ids, dtype=np.int32)
 
@@ -153,6 +233,31 @@ class BertDataManager:
         token_type_ids_batch = np.array(token_type_ids_batch)
 
         return x_batch, y_batch, att_mask_batch, token_type_ids_batch
+
+    def map_func(self, example):
+        feature_description = {
+            'X': tf.io.FixedLenFeature([512], tf.int64),
+            'y': tf.io.FixedLenFeature([1], tf.int64),
+            'att_mask': tf.io.FixedLenFeature([512], tf.int64),
+            'token_type_ids': tf.io.FixedLenFeature([512], tf.int64)
+        }
+        parsed_example = tf.io.parse_single_example(example, features=feature_description)
+        X = tf.cast(parsed_example['X'], tf.int32)
+        # tf.print(X)
+        y = tf.squeeze(tf.cast(parsed_example['y'], tf.int32))
+        # tf.print(y)
+        att_mask = tf.cast(parsed_example['att_mask'], tf.int32)
+        # tf.print(att_mask)
+        token_type_ids = tf.cast(parsed_example['token_type_ids'], tf.int32)
+        # tf.print(token_type_ids)
+        return X, y, att_mask, token_type_ids
+
+    def load_dataset(self, filepath):
+        shuffle_block = 140000
+        dataset = tf.data.TFRecordDataset(os.path.join(self.tfrecords_file_path, filepath))
+        dataset = dataset.map(map_func=self.map_func, num_parallel_calls=8)
+        dataset = dataset.shuffle(shuffle_block)
+        return dataset
 
 
 class DataManager:
@@ -210,7 +315,7 @@ class DataManager:
         return token2id, id2token, label2id, id2label
 
     def build_vocab(self):
-        df_train = read_csv(self.train_file, names=['id', 'date', 'label', 'sentence', 'keyword'], delimiter='_!_')
+        df_train = read_csv(self.train_file, names=['sentence', 'label'], delimiter=',')
         sentences = list(set(df_train['sentence'][df_train['sentence'].notnull()]))
         tokens = []
         if self.token_level == 'word':
@@ -275,13 +380,17 @@ class DataManager:
         x = []
         y = []
         for index, record in tqdm(df.iterrows()):
-            sentence = record.sentence
-            label = record.label
+            sentence = record.sentence.replace(' ', '')
+            label = record.label[0]
             if self.token_level == 'word':
                 sentence = self.word2vec_utils.processing_sentence(sentence, self.word2vec_utils.get_stop_word())
             else:
                 sentence = list(record.sentence)
-
+                if len(sentence) > self.max_sequence_length:
+                    sentence = sentence[:self.max_sequence_length]
+            # if len(sentence) != self.max_sequence_length:
+            #     print(len(sentence))
+            # assert len(sentence) == self.max_sequence_length
             tokens = []
             for word in sentence:
                 if word in self.token2id:
@@ -297,7 +406,7 @@ class DataManager:
         return np.array(x), np.array(y)
 
     def get_training_set(self, ratio=0.9):
-        df_train = read_csv(self.train_file, names=['id', 'date', 'label', 'sentence', 'keyword'], delimiter='_!_')
+        df_train = read_csv(self.train_file, names=['sentence', 'label'], delimiter=',')
         x, y = self.prepare(df_train)
         num_samples = len(x)
         if self.dev_file is not None:
@@ -313,14 +422,20 @@ class DataManager:
         self.logger.info('training set size:{}, validation set size:{}'. format(len(x_train), len(x_val)))
         return x_train, y_train, x_val, y_val
 
-    def get_dataset(self):
+    def get_training_dataset(self):
         x_train, y_train, x_val, y_val = self.get_training_set(ratio=0.8)
+        # print(x_train)
         train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
         valid_dataset = tf.data.Dataset.from_tensor_slices((x_val, y_val))
         return train_dataset, valid_dataset
 
+    def get_testing_dataset(self):
+        X_val, y_val = self.get_valid_set()
+        valid_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
+        return valid_dataset
+
     def get_valid_set(self):
-        df_val = read_csv(self.train_file, names=['id', 'date', 'label', 'sentence', 'keyword'], delimiter='_!_')
+        df_val = read_csv(self.dev_file, names=['sentence', 'label'], delimiter=',')
         x_val, y_val = self.prepare(df_val)
         return x_val, y_val
 

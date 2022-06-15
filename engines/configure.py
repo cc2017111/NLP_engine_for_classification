@@ -31,6 +31,10 @@ class Configure:
         if the_item in config:
             self.train_file = config[the_item]
 
+        the_item = 'tfrecords_file_path'
+        if the_item in config:
+            self.tfrecords_file_path = config[the_item]
+
         the_item = 'token_level'
         if the_item in config:
             self.token_level = config[the_item]
@@ -94,6 +98,10 @@ class Configure:
         if the_item in config:
             self.max_to_keep = int(config[the_item])
 
+        the_item = 'save_interval_updates'
+        if the_item in config:
+            self.save_interval_updates = int(config[the_item])
+
         the_item = 'learning_rate'
         if the_item in config:
             self.learning_rate = float(config[the_item])
@@ -134,6 +142,10 @@ class Configure:
         if the_item in config:
             self.dropout_rate = float(config[the_item])
 
+        the_item = 'loss_type'
+        if the_item in config:
+            self.loss_type = config[the_item]
+
         # TextCNN model Configure
         the_item = 'num_filters'
         if the_item in config:
@@ -164,6 +176,19 @@ class Configure:
         the_item = 'encoder_num'
         if the_item in config:
             self.encoder_num = int(config[the_item])
+
+        # HMCN configure
+        the_item = 'hierarchical_depth'
+        if the_item in config:
+            self.hierarchical_depth = config[the_item]
+
+        the_item = 'global2local'
+        if the_item in config:
+            self.global2local = config[the_item]
+
+        the_item = 'hierar_penalty'
+        if the_item in config:
+            self.hierar_penalty = float(config[the_item])
 
     @staticmethod
     def config_file_to_dict(input_file):

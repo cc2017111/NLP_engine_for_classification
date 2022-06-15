@@ -2,10 +2,11 @@ import argparse
 from pathlib import Path
 import os
 import tensorflow as tf
-from engines.configure import Configure
-from engines.utils.logger import get_logger
-from engines.data import BertDataManager, DataManager
-from engines.train import train
+from configure import Configure
+from utils.logger import get_logger
+from data import BertDataManager, DataManager
+from train import train
+from test import test
 
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = '0'
@@ -52,7 +53,7 @@ def check_fold(configures):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='TextCNN')
+    parser = argparse.ArgumentParser(description='BERT')
     parser.add_argument('--config_file', default='system.config')
     args = parser.parse_args()
     configs = Configure(config_file=os.path.join(base_path, args.config_file))
@@ -66,3 +67,6 @@ if __name__ == "__main__":
     if mode == "train":
         logger.info("mode:train")
         train(configs, dataManager, logger)
+    if mode == "test":
+        logger.info("mode:test")
+        test(configs, dataManager, logger)
